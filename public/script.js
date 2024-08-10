@@ -311,10 +311,18 @@ class poll {
 }
 
 function handle_command(message) {
+    function unescape(escapedStr) {
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = escapedStr;
+        return tempDiv.textContent || tempDiv.innerText || "";
+    }
+
     // ignore non-commands, except if a vote is running so we can allow messages like "1" or "!2" to be counted as votes
     if (!message.message.startsWith("!") && active_poll === null)
         return false;
-    let msg = message.message;
+
+    // html escape codes use semicolons, so we need to unescape them otherwise the splitting will break
+    let msg = unescape(message.message);
     const is_admin = message.is_owner;
 
     if (msg.startsWith("!poll") && is_admin) {
