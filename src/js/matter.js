@@ -131,6 +131,59 @@ Runner.prizes = function () {
     Events.on(render, 'afterRender', function () {
         var ctx = render.canvas.getContext('2d');
         var allBodies = Composite.allBodies(world);
+        // Simple cache for label canvases to avoid re-rendering text every frame
+        if (!render._labelCache) {
+            render._labelCache = Object.create(null);
+        }
+        var labelCache = render._labelCache;
+
+        function getLabelCanvas(text, font, fillStyle, strokeStyle, lineWidth) {
+            var key = [text, font, fillStyle, strokeStyle, lineWidth].join('|');
+            var cached = labelCache[key];
+            if (cached) return cached;
+
+            var off = document.createElement('canvas');
+            var octx = off.getContext('2d');
+            octx.font = font;
+            octx.textAlign = 'center';
+            octx.textBaseline = 'bottom';
+            var metrics = octx.measureText(text);
+            var padding = (lineWidth || 0) + 2; // space for stroke
+            var width = Math.ceil((metrics.width || 0) + padding * 2);
+            // Est. height using metrics if available, fallback to font size parse
+            var ascent = metrics.actualBoundingBoxAscent || 0;
+            var descent = metrics.actualBoundingBoxDescent || 0;
+            var fallbackFontSize = parseInt(font, 10) || 12;
+            var height = Math.ceil(
+                (ascent + descent || fallbackFontSize) + padding * 2
+            );
+            off.width = Math.max(1, width);
+            off.height = Math.max(1, height);
+
+            // reapply state after resizing
+            octx.font = font;
+            octx.textAlign = 'center';
+            octx.textBaseline = 'bottom';
+            if (strokeStyle) {
+                octx.strokeStyle = strokeStyle;
+            }
+            if (lineWidth != null) {
+                octx.lineWidth = lineWidth;
+            }
+            if (fillStyle) {
+                octx.fillStyle = fillStyle;
+            }
+
+            var cx = off.width / 2;
+            var by = off.height - padding; // baseline y (bottom alignment)
+            if (strokeStyle && (lineWidth || 0) > 0) {
+                octx.strokeText(text, cx, by);
+            }
+            octx.fillText(text, cx, by);
+
+            labelCache[key] = off;
+            return off;
+        }
 
         // Draw labels for objects that have them
         for (var i = 0; i < allBodies.length; i++) {
@@ -146,17 +199,22 @@ Runner.prizes = function () {
                 ctx.translate(x, y);
                 ctx.rotate(body.angle + Math.PI / 2);
 
-                // Set text style
-                ctx.font = '12px Verlag';
-                ctx.fillStyle = body.label.color || '#ffffff';
-                ctx.strokeStyle = '#000000';
-                ctx.lineWidth = 2;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'bottom';
+                var font = '12px Verlag';
+                var fillStyle = body.label.color || '#ffffff';
+                var strokeStyle = '#000000';
+                var lineWidth = 2;
+                var labelCanvas = getLabelCanvas(
+                    body.label.text,
+                    font,
+                    fillStyle,
+                    strokeStyle,
+                    lineWidth
+                );
 
-                // Draw text with outline (relative to rotated coordinate system)
-                ctx.strokeText(body.label.text, 10, 6);
-                ctx.fillText(body.label.text, 10, 6);
+                // Anchor the cached label by center-bottom at (10, 6)
+                var w = labelCanvas.width;
+                var h = labelCanvas.height;
+                ctx.drawImage(labelCanvas, 10 - w / 2, 6 - h);
 
                 ctx.restore();
             }
